@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">VolumeManager</string>
+
+    <string name="lock">Lock</string>
+    <string name="locked">Locked</string>
+    <string name="menu">Menu</string>
+</resources>
