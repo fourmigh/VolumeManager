@@ -9,14 +9,12 @@ import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -35,11 +33,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.dp
 import org.caojun.volumemanager.ui.theme.VolumeManagerTheme
 import androidx.compose.material.Slider
-import androidx.compose.runtime.State
-import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.runtime.LaunchedEffect
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -107,9 +103,9 @@ fun Greeting(context: Context) {
         LazyColumn {
             val values = Constant.AudioStream.values()
             items(values.size) { index ->
-                SoundTypeSlider(context, values[index]) { newProgress ->
+                SoundTypeSlider(context, values[index])/* { newProgress ->
                     volumes[values[index]] = newProgress
-                }
+                }*/
             }
         }
     }
@@ -124,23 +120,17 @@ fun GreetingPreview() {
 }
 
 private var locked by mutableStateOf(false)
-//private val streamKeys = ArrayList<Int>()
 private val volumes = HashMap<Constant.AudioStream, Int>()
-//private val soundTypes = ArrayList<SoundType>()
 private val volumesMax = HashMap<Constant.AudioStream, Int>()
 private fun initVolume(context: Context) {
     val audioManager = getAudioManager(context)
     val keys = Constant.AudioStream.values()
     for (key in keys) {
         val int = key.int
-//        streamKeys.add(key.int)
         val volume = audioManager?.getStreamVolume(int) ?: Constant.VOLUME_MIN
         volumes[key] = volume
         val max = audioManager?.getStreamMaxVolume(int) ?: Constant.VOLUME_MAX
         volumesMax[key] = max
-
-//        val soundType = SoundType(key, volume, max)
-//        soundTypes.add(soundType)
     }
 }
 
@@ -163,15 +153,24 @@ private class VolumeChangeReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         Log.d("VolumeChangeReceiver", "locked($locked), ${intent.action}")
         if (!locked) {
+//            val audioManager = getAudioManager(context)
+//            for (key in Constant.AudioStream.values()) {
+//                val volume = audioManager?.getStreamVolume(key.int) ?: Constant.VOLUME_MIN
+//                volumes[key] = volume
+//                Log.d("LaunchedEffect", "volumes($key), ${volumes[key]}")
+//            }
             return
         }
-//        val audioManager = getAudioManager(context)
         for (key in Constant.AudioStream.values()) {
             val volume = volumes[key] ?: Constant.VOLUME_MIN
-//            audioManager?.setStreamVolume(key.int, volume, 0)
             setStreamVolume(context, key, volume)
         }
     }
+}
+
+private fun getStreamVolume(context: Context, audioStream: Constant.AudioStream): Int {
+    val audioManager = getAudioManager(context)
+    return audioManager?.getStreamVolume(audioStream.int) ?: Constant.VOLUME_MIN
 }
 
 private fun setStreamVolume(context: Context, audioStream: Constant.AudioStream, volume: Int) {
@@ -182,8 +181,9 @@ private fun setStreamVolume(context: Context, audioStream: Constant.AudioStream,
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 @Composable
-private fun SoundTypeSlider(context: Context, audioStream: Constant.AudioStream, onProgressChange: (Int) -> Unit) {
+private fun SoundTypeSlider(context: Context, audioStream: Constant.AudioStream/*, onProgressChange: (Int) -> Unit*/) {
     var text by remember { mutableStateOf("") }
+
     Column(
         modifier = Modifier.padding(Constant.SPACE_SMALL),
         horizontalAlignment = Alignment.Start
@@ -194,15 +194,14 @@ private fun SoundTypeSlider(context: Context, audioStream: Constant.AudioStream,
                 value = text,
                 onValueChange = {
                     text = it
-                    if (it.isNotEmpty()) {
-                        onProgressChange(it.toInt())
-                    }
+//                    if (it.isNotEmpty()) {
+//                        onProgressChange(it.toInt())
+//                    }
                 }
             )
         }
-//        Spacer(modifier = Modifier.height(Constant.SPACE_SMALL))
         Slider(
-            value = (volumes[audioStream] ?: Constant.VOLUME_MIN).toFloat(),
+            value = getStreamVolume(context, audioStream).toFloat(),
             onValueChange = { newValue ->
                 if (locked) {
                     return@Slider
@@ -213,18 +212,13 @@ private fun SoundTypeSlider(context: Context, audioStream: Constant.AudioStream,
                 setStreamVolume(context, audioStream, volume)
 
                 text = newValue.toInt().toString()
-                onProgressChange(volume)
+//                onProgressChange(volume)
             },
             valueRange = 0f..(volumesMax[audioStream] ?: Constant.VOLUME_MAX).toFloat(),
             steps = 1,
-//            modifier = Modifier.fillMaxWidth()
-//                .pointerInput(Unit) {
-//                    detectTransformGestures { _, panGesture ->
-//                        val deltaX = panGesture?.translation?.x ?: 0f
-//                        val deltaVolume = deltaX / 100 // 调整此处的除数以控制滑动速度
-//                        volume = (volume + deltaVolume).coerceIn(0f, 15f)
-//                    }
-//                }
+            onValueChangeFinished = {
+                volumes[audioStream] = getStreamVolume(context, audioStream)
+            }
         )
     }
 }
