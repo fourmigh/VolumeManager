@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.media.AudioManager
 import android.os.Bundle
+import android.text.TextUtils
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -35,7 +36,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import org.caojun.volumemanager.ui.theme.VolumeManagerTheme
 import androidx.compose.material.Slider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.snapshotFlow
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -100,12 +104,15 @@ fun Greeting(context: Context) {
             }
         }
 
+//        val dynamicValue = remember { mutableStateOf(50f) }
+//        SliderWithDynamicValue(dynamicValue)
+
         LazyColumn {
             val values = Constant.AudioStream.values()
             items(values.size) { index ->
-                SoundTypeSlider(context, values[index])/* { newProgress ->
-                    volumes[values[index]] = newProgress
-                }*/
+                val dynamicValue = remember { mutableStateOf(getStreamVolume(context, values[index])) }
+                volumesReal[values[index]] = dynamicValue
+                VolumeSlider(context, values[index], dynamicValue)
             }
         }
     }
@@ -121,6 +128,7 @@ fun GreetingPreview() {
 
 private var locked by mutableStateOf(false)
 private val volumes = HashMap<Constant.AudioStream, Int>()
+private val volumesReal = HashMap<Constant.AudioStream, MutableState<Int>>()
 private val volumesMax = HashMap<Constant.AudioStream, Int>()
 private fun initVolume(context: Context) {
     val audioManager = getAudioManager(context)
@@ -152,13 +160,12 @@ private val volumeChangeReceiver = VolumeChangeReceiver()
 private class VolumeChangeReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         Log.d("VolumeChangeReceiver", "locked($locked), ${intent.action}")
+        for (key in Constant.AudioStream.values()) {
+            val volume = getStreamVolume(context, key)
+            volumesReal[key]?.value = volume
+            Log.i("VolumeChangeReceiver", "volumesReal[$key]: ${volumesReal[key]}")
+        }
         if (!locked) {
-//            val audioManager = getAudioManager(context)
-//            for (key in Constant.AudioStream.values()) {
-//                val volume = audioManager?.getStreamVolume(key.int) ?: Constant.VOLUME_MIN
-//                volumes[key] = volume
-//                Log.d("LaunchedEffect", "volumes($key), ${volumes[key]}")
-//            }
             return
         }
         for (key in Constant.AudioStream.values()) {
@@ -176,13 +183,48 @@ private fun getStreamVolume(context: Context, audioStream: Constant.AudioStream)
 private fun setStreamVolume(context: Context, audioStream: Constant.AudioStream, volume: Int) {
     val audioManager = getAudioManager(context)
     audioManager?.setStreamVolume(audioStream.int, volume, 0)
+    volumesReal[audioStream]?.value = volume
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 @Composable
-private fun SoundTypeSlider(context: Context, audioStream: Constant.AudioStream/*, onProgressChange: (Int) -> Unit*/) {
-    var text by remember { mutableStateOf("") }
+fun SliderWithDynamicValue(dynamicValue: MutableState<Float>) {
+    var sliderValue by remember { mutableStateOf(dynamicValue.value) }
+
+    LaunchedEffect(dynamicValue) {
+        snapshotFlow { dynamicValue.value }
+            .collect { newValue ->
+                sliderValue = newValue
+            }
+    }
+
+    Slider(
+        value = sliderValue,
+        onValueChange = { newValue ->
+            sliderValue = newValue
+            dynamicValue.value = newValue // 更新数据值
+        },
+        valueRange = 0f..100f
+    )
+
+    Button(onClick = {
+        dynamicValue.value += 10f // 改变 dynamicValue 的值
+    }) {
+        Text("Increase dynamicValue")
+    }
+}
+
+@Composable
+private fun VolumeSlider(context: Context, audioStream: Constant.AudioStream, dynamicValue: MutableState<Int>) {
+    var sliderValue by remember { mutableStateOf(dynamicValue.value) }
+
+    LaunchedEffect(dynamicValue) {
+        snapshotFlow { dynamicValue.value }
+            .collect { newValue ->
+                sliderValue = newValue
+            }
+    }
 
     Column(
         modifier = Modifier.padding(Constant.SPACE_SMALL),
@@ -191,17 +233,15 @@ private fun SoundTypeSlider(context: Context, audioStream: Constant.AudioStream/
         Row {
             Text(text = "${audioStream.name}: ")
             BasicTextField(
-                value = text,
+                value = sliderValue.toString(),
                 onValueChange = {
-                    text = it
-//                    if (it.isNotEmpty()) {
-//                        onProgressChange(it.toInt())
-//                    }
+                    sliderValue = it.toInt()
                 }
             )
         }
         Slider(
-            value = getStreamVolume(context, audioStream).toFloat(),
+//            value = getStreamVolume(context, audioStream).toFloat(),
+            value = sliderValue.toFloat(),
             onValueChange = { newValue ->
                 if (locked) {
                     return@Slider
@@ -211,8 +251,7 @@ private fun SoundTypeSlider(context: Context, audioStream: Constant.AudioStream/
                 Log.i("VolumeChangeReceiver", "onValueChange: $volume")
                 setStreamVolume(context, audioStream, volume)
 
-                text = newValue.toInt().toString()
-//                onProgressChange(volume)
+                sliderValue = volume
             },
             valueRange = 0f..(volumesMax[audioStream] ?: Constant.VOLUME_MAX).toFloat(),
             steps = 1,
